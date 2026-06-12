@@ -1,0 +1,11 @@
+services:
+  ai_server:
+    container_name: ai_server
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile  
+    volumes:
+      - ../src:/home
+    ports:
+      - "8000:8000"
+    restart: always

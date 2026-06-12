@@ -1,0 +1,28 @@
+services:
+  ai_server:
+    container_name: ai_server
+    build:
+      context: ./AI
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    restart: always
+
+  be_server:
+    container_name: be_server
+    build:
+      context: ./BE
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./BE/.env
+    environment:
+      - AI_URL=http://ai_server:8000
+    volumes:
+      - be_db:/app/prisma
+    depends_on:
+      - ai_server
+    restart: always
+
+volumes:
+  be_db:
