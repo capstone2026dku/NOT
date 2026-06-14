@@ -14,14 +14,15 @@ services:
       context: ./BE
     ports:
       - "3000:3000"
-    env_file:
-      - ./BE/.env
     environment:
       - AI_URL=http://ai_server:8000
+      - DATABASE_URL=file:./prisma/dev.db
     volumes:
       - be_db:/app/prisma
     depends_on:
       - ai_server
+    command: >
+      sh -c "npx prisma migrate deploy && npx prisma db seed && node src/index.js"
     restart: always
 
 volumes:
