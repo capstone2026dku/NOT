@@ -40,11 +40,18 @@ src/
 ├── middlewares/
 │   ├── auth.js             # JWT 검증 미들웨어 (authenticate, requireAdmin)
 │   └── errorHandler.js     # 전역 오류 처리
+├── routes/
+│   ├── ...
+│   ├── menus.js            # 메뉴 조회 / 리뷰 CRUD / 품절 토글
+│   ├── tickets.js          # 식권 조회 / 등록
+│   ├── recommendations.js  # AI 메뉴 추천 (취향·날씨·인기)
+│   └── inquiry.js          # 문의 접수
 ├── utils/
 │   ├── websocket.js        # WebSocket 채널 초기화 및 브로드캐스트
 │   ├── cron.js             # 크론 작업 (메뉴 동기화 등)
 │   ├── fcm.js              # FCM 푸시 알림 발송
-│   ├── portalAuth.js       # 단국대 포털 인증 (조리 시간 조회용)
+│   ├── emailService.js     # OTP 인증 이메일 발송
+│   ├── portalAuth.js       # 단국대 포털 인증 (학번/비밀번호 검증)
 │   └── scraper.js          # 단국대 홈페이지 메뉴 스크래핑
 
 prisma/
@@ -149,30 +156,40 @@ SCRAPE_CRON="0 7 * * 1-5"          # 평일 오전 7시
 
 ### 인증 `/auth`
 
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| POST | `/auth/google` | Google ID 토큰 검증 후 JWT 발급 (최초 로그인 시 자동 가입) |
-| POST | `/auth/refresh` | 리프레시 토큰으로 액세스 토큰 갱신 |
-| POST | `/auth/logout` | 로그아웃 (FCM 토큰 초기화) |
-| PATCH | `/auth/fcm-token` | FCM 디바이스 토큰 업데이트 |
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| POST | `/auth/google` | - | Google ID 토큰 검증 후 JWT 발급 (최초 로그인 시 자동 가입) |
+| POST | `/auth/login` | - | 학번 + 포털 비밀번호로 로그인 |
+| POST | `/auth/register/send-otp` | - | 회원가입 — 포털 인증 후 학교 이메일로 OTP 전송 |
+| POST | `/auth/register/verify-otp` | - | OTP 검증 및 계정 생성 |
+| POST | `/auth/refresh` | - | 리프레시 토큰으로 액세스 토큰 갱신 |
+| POST | `/auth/logout` | 필요 | 로그아웃 (FCM 토큰 초기화) |
+| PATCH | `/auth/fcm-token` | 필요 | FCM 디바이스 토큰 업데이트 |
+| PATCH | `/auth/password` | 필요 | 비밀번호 변경 |
+| DELETE | `/auth/me` | 필요 | 회원 탈퇴 |
 
-**로그인 요청 예시:**
-```json
-// POST /auth/google
-{ "idToken": "eyJhbGci..." }
+**로그인 방식:**
+- **Google OAuth**: `google_sign_in`으로 발급한 idToken을 서버에 전달 → `@dankook.ac.kr` 계정만 허용, 첫 로그인 시 자동 가입
+- **학번 로그인**: 단국 포털 비밀번호로 인증. 앱 자체 비밀번호가 설정된 경우 bcrypt 해시 비교로 인증
 
-// 응답
-{
-  "accessToken": "eyJ...",
-  "refreshToken": "eyJ...",
-  "user": { "id": "uuid", "studentId": "32000001", "name": "홍길동" }
-}
+**회원가입 흐름 (학번):**
+```
+1. POST /auth/register/send-otp  → 포털 인증 확인 후 학교 이메일로 6자리 OTP 발송 (유효 10분)
+2. POST /auth/register/verify-otp → OTP 검증 후 계정 생성 + JWT 발급
 ```
 
-**제약 조건:**
-- `@dankook.ac.kr` 계정 외 접근 시 `403 NOT_DANKOOK_ACCOUNT`
-- Flutter 앱은 `google_sign_in` 패키지로 idToken을 획득하여 전달
-- 회원가입 절차 없음 — 첫 로그인 시 자동으로 계정이 생성됨
+---
+
+---
+
+### 메뉴 `/menus`
+
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| GET | `/menus/me/reviews` | 필요 | 내가 쓴 리뷰 목록 |
+| GET | `/menus/:menuId/reviews` | 필요 | 특정 메뉴 리뷰 목록 + 평균 평점 |
+| POST | `/menus/:menuId/reviews` | 필요 | 리뷰 작성 (1~5점, 이미 작성한 경우 수정) |
+| PATCH | `/menus/:id/soldout` | 관리자 | 품절 토글 |
 
 ---
 
@@ -232,6 +249,37 @@ PENDING → PAID → PARTIALLY_COMPLETED → COMPLETED
 | PATCH | `/kitchen/items/:id/complete` | 필요 | 아이템 완료 처리 (전체 완료 시 FCM 발송) |
 
 **아이템 상태:** `PENDING → COOKING → COMPLETED`
+
+---
+
+### 식권 `/tickets`
+
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| GET | `/tickets` | 필요 | 내 식권 목록 |
+| POST | `/tickets` | 필요 | 식권 번호 등록 (6자 이상, 중복 불가) |
+
+등록 시 유효 기간 1개월, 기본 금액 5,000원으로 생성됩니다.
+
+---
+
+### 추천 `/recommendations`
+
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| GET | `/recommendations/preference` | 필요 | 최근 20건 주문 이력 기반 AI 메뉴 추천 |
+| GET | `/recommendations/weather` | 필요 | 현재 날씨 기반 AI 메뉴 추천 |
+| GET | `/recommendations/popular` | 필요 | 오늘 주문 수 기준 인기 메뉴 Top 10 |
+
+AI 서버(`AI_URL`)에 요청 후 결과 메뉴명을 DB에서 조회하여 반환합니다.
+
+---
+
+### 문의 `/inquiry`
+
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| POST | `/inquiry` | 필요 | 문의 접수 |
 
 ---
 
@@ -351,3 +399,29 @@ flutter run --dart-define=GOOGLE_WEB_CLIENT_ID=your-web-client-id.apps.googleuse
 | POK | 폭풍분식 |
 
 각 식당당 4~8개 메뉴, 가격 및 조리 시간 포함.
+
+---
+
+## 에러 코드
+
+| 코드 | 상황 |
+|------|------|
+| `MISSING_TOKEN` | 토큰 미전달 |
+| `INVALID_TOKEN` | 만료/위조 토큰 |
+| `NOT_DANKOOK_ACCOUNT` | 단국대 이메일 아님 |
+| `INVALID_CREDENTIALS` | 학번 또는 비밀번호 불일치 |
+| `NOT_ENROLLED` | 재학생 아님 (포털 인증 실패) |
+| `ALREADY_EXISTS` | 이미 가입된 학번 |
+| `OTP_NOT_FOUND` | OTP 요청 내역 없음 |
+| `OTP_EXPIRED` | OTP 만료 (10분 초과) |
+| `INVALID_OTP` | OTP 불일치 |
+| `WRONG_PASSWORD` | 현재 비밀번호 불일치 |
+| `VALIDATION_FAILED` | 메뉴 품절/비활성/미발견 |
+| `RESTAURANT_LOCKED` | 식당 잠금 상태 (HTTP 423) |
+| `PAYMENT_REQUIRED` | 결제 미완료 상태에서 주문 생성 시도 |
+| `SOLDOUT_AFTER_PAYMENT` | 결제 후 품절 (자동 환불 처리됨) |
+| `CANNOT_CANCEL` | 취소 불가 상태 (조리 완료 등) |
+| `ALREADY_REGISTERED` | 이미 등록된 식권 번호 |
+| `TICKET_TAKEN` | 다른 사용자가 사용 중인 식권 번호 |
+| `INVALID_RATING` | 리뷰 평점이 1~5 범위 밖 |
+| `EMPTY_CONTENT` | 문의 내용 없음 |
