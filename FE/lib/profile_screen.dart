@@ -18,7 +18,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _email = '';
   bool _loadingUser = true;
 
+  List<dynamic> _reviews = [];
+  bool _loadingReviews = false;
+
+  bool _inquirySending = false;
   final TextEditingController _inquiryController = TextEditingController();
+
+  // 비밀번호 변경
+  final TextEditingController _currentPwController = TextEditingController();
+  final TextEditingController _newPwController = TextEditingController();
+  final TextEditingController _confirmPwController = TextEditingController();
+  bool _pwChanging = false;
+  bool _currentPwVisible = false;
+  bool _newPwVisible = false;
+  bool _confirmPwVisible = false;
 
   @override
   void initState() {
@@ -40,10 +53,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _loadReviews() async {
+    setState(() => _loadingReviews = true);
+    try {
+      final data = await ApiService.getMyReviews();
+      if (mounted) setState(() { _reviews = data; _loadingReviews = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loadingReviews = false);
+    }
+  }
+
+  Future<void> _sendInquiry() async {
+    final content = _inquiryController.text.trim();
+    if (content.isEmpty) return;
+    setState(() => _inquirySending = true);
+    try {
+      await ApiService.submitInquiry(content);
+      if (mounted) {
+        _inquiryController.clear();
+        setState(() => _inquirySending = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('문의가 접수되었습니다.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _inquirySending = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '')), backgroundColor: Colors.redAccent),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
     _inquiryController.dispose();
+    _currentPwController.dispose();
+    _newPwController.dispose();
+    _confirmPwController.dispose();
     super.dispose();
   }
 
@@ -68,6 +117,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     if (_subView == 1) return _buildReviewsView();
     if (_subView == 2) return _buildInquiryView();
+    if (_subView == 3) return _buildChangePasswordView();
     return _buildMainView();
   }
 
@@ -207,7 +257,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         iconColor: const Color(0xFFEAB308),
                         iconBg: const Color(0xFFFEF9C3),
                         label: '내가 쓴 리뷰',
-                        onTap: () => setState(() => _subView = 1),
+                        onTap: () {
+                          setState(() => _subView = 1);
+                          _loadReviews();
+                        },
                       ),
                       _divider(),
                       _menuRow(
@@ -215,7 +268,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         iconColor: const Color(0xFF3B82F6),
                         iconBg: const Color(0xFFEFF6FF),
                         label: '비밀번호 변경',
-                        onTap: () {},
+                        onTap: () => setState(() => _subView = 3),
                       ),
                       _divider(),
                       _menuRow(
@@ -271,16 +324,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: AppColors.backgroundLight,
       appBar: _appBar('내가 쓴 리뷰',
           onBack: () => setState(() => _subView = 0)),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          _reviewCard('51장국밥', '고기만국밥', '2026-05-18', 5,
-              '항상 맛있게 먹고 있습니다! 국물도 진하고 고기 양도 많아서 든든하게 먹었어요.'),
-          const SizedBox(height: 14),
-          _reviewCard('바비든든', '제육덮밥', '2026-05-15', 4,
-              '양도 많고 불맛도 살짝 나서 좋네요. 가성비 최고!'),
-        ],
-      ),
+      body: _loadingReviews
+          ? const Center(child: CircularProgressIndicator())
+          : _reviews.isEmpty
+              ? const Center(
+                  child: Text('작성한 리뷰가 없습니다.',
+                      style: TextStyle(color: AppColors.textLight, fontSize: 14)),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(20),
+                  itemCount: _reviews.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 14),
+                  itemBuilder: (_, i) {
+                    final r = _reviews[i] as Map<String, dynamic>;
+                    final menu = r['menu'] as Map<String, dynamic>?;
+                    final restaurant = menu?['restaurant'] as Map<String, dynamic>?;
+                    final createdAt = r['createdAt'] != null
+                        ? DateTime.tryParse(r['createdAt'].toString())
+                        : null;
+                    final dateStr = createdAt != null
+                        ? '${createdAt.year}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}'
+                        : '';
+                    return _reviewCard(
+                      restaurant?['name'] ?? '',
+                      menu?['name'] ?? '',
+                      dateStr,
+                      (r['rating'] as num?)?.toInt() ?? 0,
+                      r['comment']?.toString() ?? '',
+                    );
+                  },
+                ),
     );
   }
 
@@ -362,30 +435,188 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),
                 ),
-                onPressed: _inquiryController.text.trim().isNotEmpty
-                    ? () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('문의가 접수되었습니다.')),
-                        );
-                        _inquiryController.clear();
-                        setState(() {});
-                      }
+                onPressed: (_inquiryController.text.trim().isNotEmpty && !_inquirySending)
+                    ? _sendInquiry
                     : null,
-                child: Text(
-                  '문의 보내기',
-                  style: TextStyle(
-                    color: _inquiryController.text.trim().isNotEmpty
-                        ? Colors.white
-                        : const Color(0xFF94A3B8),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
-                ),
+                child: _inquirySending
+                    ? const SizedBox(
+                        width: 22, height: 22,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                      )
+                    : Text(
+                        '문의 보내기',
+                        style: TextStyle(
+                          color: _inquiryController.text.trim().isNotEmpty
+                              ? Colors.white
+                              : const Color(0xFF94A3B8),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  // ─── 비밀번호 변경 ─────────────────────────────────────────────
+  Future<void> _changePassword() async {
+    final current = _currentPwController.text.trim();
+    final next = _newPwController.text.trim();
+    final confirm = _confirmPwController.text.trim();
+
+    if (current.isEmpty || next.isEmpty || confirm.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('모든 항목을 입력해주세요.')),
+      );
+      return;
+    }
+    if (next.length < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('새 비밀번호는 8자 이상이어야 합니다.')),
+      );
+      return;
+    }
+    if (next != confirm) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('새 비밀번호가 일치하지 않습니다.')),
+      );
+      return;
+    }
+
+    setState(() => _pwChanging = true);
+    try {
+      await ApiService.changePassword(currentPassword: current, newPassword: next);
+      if (mounted) {
+        _currentPwController.clear();
+        _newPwController.clear();
+        _confirmPwController.clear();
+        setState(() { _pwChanging = false; _subView = 0; });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('비밀번호가 변경되었습니다.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _pwChanging = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildChangePasswordView() {
+    return Scaffold(
+      backgroundColor: AppColors.backgroundLight,
+      appBar: _appBar('비밀번호 변경',
+          onBack: () {
+            _currentPwController.clear();
+            _newPwController.clear();
+            _confirmPwController.clear();
+            setState(() { _subView = 0; _currentPwVisible = false; _newPwVisible = false; _confirmPwVisible = false; });
+          }),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Text(
+              '현재 포털(학번) 비밀번호를 입력한 후\n새 비밀번호로 변경할 수 있습니다.\n변경 후 로그인 시 새 비밀번호를 사용하세요.',
+              style: TextStyle(fontSize: 13, color: AppColors.textDark, height: 1.6),
+            ),
+          ),
+          const SizedBox(height: 24),
+          _pwField(
+            label: '현재 비밀번호',
+            controller: _currentPwController,
+            visible: _currentPwVisible,
+            onToggle: () => setState(() => _currentPwVisible = !_currentPwVisible),
+          ),
+          const SizedBox(height: 16),
+          _pwField(
+            label: '새 비밀번호 (8자 이상)',
+            controller: _newPwController,
+            visible: _newPwVisible,
+            onToggle: () => setState(() => _newPwVisible = !_newPwVisible),
+          ),
+          const SizedBox(height: 16),
+          _pwField(
+            label: '새 비밀번호 확인',
+            controller: _confirmPwController,
+            visible: _confirmPwVisible,
+            onToggle: () => setState(() => _confirmPwVisible = !_confirmPwVisible),
+          ),
+          const SizedBox(height: 32),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              onPressed: _pwChanging ? null : _changePassword,
+              child: _pwChanging
+                  ? const SizedBox(
+                      width: 22, height: 22,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                    )
+                  : const Text('비밀번호 변경',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pwField({
+    required String label,
+    required TextEditingController controller,
+    required bool visible,
+    required VoidCallback onToggle,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textDark)),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: TextField(
+            controller: controller,
+            obscureText: !visible,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              border: InputBorder.none,
+              suffixIcon: IconButton(
+                icon: Icon(
+                  visible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  color: AppColors.textMuted, size: 20,
+                ),
+                onPressed: onToggle,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

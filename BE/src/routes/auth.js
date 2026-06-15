@@ -1,5 +1,6 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const { OAuth2Client } = require('google-auth-library');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate: authMiddleware } = require('../middlewares/auth');
@@ -80,6 +81,25 @@ router.post('/login', async (req, res, next) => {
       return res.status(400).json({ code: 'MISSING_FIELDS', message: '학번과 비밀번호를 입력해주세요.' });
     }
 
+    const existing = await prisma.user.findUnique({ where: { studentId } });
+
+    // 앱에서 설정한 로컬 비밀번호가 있으면 해시 비교로 인증
+    if (existing?.passwordHash) {
+      const match = await bcrypt.compare(password, existing.passwordHash);
+      if (!match) {
+        return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: '비밀번호가 올바르지 않습니다.' });
+      }
+      const tokenPayload = {
+        userId: existing.id,
+        studentId: existing.studentId,
+        name: existing.name,
+        isAdmin: existing.isAdmin,
+      };
+      const tokens = signTokens(tokenPayload);
+      return res.json({ ...tokens, user: { id: existing.id, studentId: existing.studentId, name: existing.name } });
+    }
+
+    // 로컬 비밀번호가 없으면 포털 인증
     const portalUser = await portalAuthenticate(studentId, password);
 
     const email = `${studentId}@dankook.ac.kr`;
@@ -219,6 +239,46 @@ router.post('/logout', authMiddleware, async (req, res, next) => {
       data: { fcmToken: null },
     });
     res.json({ message: '로그아웃 완료' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /auth/password — 비밀번호 변경
+router.patch('/password', authMiddleware, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ code: 'MISSING_FIELDS', message: '현재 비밀번호와 새 비밀번호를 입력해주세요.' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ code: 'WEAK_PASSWORD', message: '새 비밀번호는 8자 이상이어야 합니다.' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+    if (!user) return res.status(404).json({ code: 'USER_NOT_FOUND', message: '사용자를 찾을 수 없습니다.' });
+
+    // 현재 비밀번호 확인: 로컬 해시 → 없으면 포털
+    if (user.passwordHash) {
+      const match = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!match) {
+        return res.status(401).json({ code: 'WRONG_PASSWORD', message: '현재 비밀번호가 올바르지 않습니다.' });
+      }
+    } else {
+      try {
+        await portalAuthenticate(user.studentId, currentPassword);
+      } catch {
+        return res.status(401).json({ code: 'WRONG_PASSWORD', message: '현재 비밀번호가 올바르지 않습니다.' });
+      }
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: req.user.userId },
+      data: { passwordHash },
+    });
+
+    res.json({ message: '비밀번호가 변경되었습니다.' });
   } catch (err) {
     next(err);
   }

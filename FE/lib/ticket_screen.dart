@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'app_theme.dart';
+import 'api_service.dart';
 
 class TicketScreen extends StatefulWidget {
   const TicketScreen({super.key});
@@ -15,15 +16,53 @@ class TicketScreen extends StatefulWidget {
 }
 
 class _TicketScreenState extends State<TicketScreen> {
-  final List<Map<String, dynamic>> tickets = [
-    {
-      'amount': '5,000원',
-      'location': '단국대 학생식당',
-      'validity': '2026.05.10 ~ 2026.06.09',
-      'ticketNumber': '12345678',
-      'status': '사용 가능',
+  List<Map<String, dynamic>> tickets = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTickets();
+  }
+
+  Future<void> _loadTickets() async {
+    try {
+      final data = await ApiService.getTickets();
+      if (mounted) {
+        setState(() {
+          tickets = data.map((t) => _fromApiTicket(t as Map<String, dynamic>)).toList();
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
     }
-  ];
+  }
+
+  static Map<String, dynamic> _fromApiTicket(Map<String, dynamic> t) {
+    final validFrom = t['validFrom'] != null ? DateTime.tryParse(t['validFrom'].toString()) : null;
+    final validUntil = t['validUntil'] != null ? DateTime.tryParse(t['validUntil'].toString()) : null;
+    final validity = (validFrom != null && validUntil != null)
+        ? '${_fmtDate(validFrom)} ~ ${_fmtDate(validUntil)}'
+        : '';
+    return {
+      'id': t['id'],
+      'amount': _fmtAmount(t['amount']),
+      'location': t['location'] ?? '단국대 학생식당',
+      'validity': validity,
+      'ticketNumber': t['ticketNumber'] ?? '',
+      'status': t['status'] == 'AVAILABLE' ? '사용 가능' : '사용 완료',
+    };
+  }
+
+  static String _fmtDate(DateTime d) =>
+      '${d.year}.${d.month.toString().padLeft(2, '0')}.${d.day.toString().padLeft(2, '0')}';
+
+  static String _fmtAmount(dynamic amount) {
+    if (amount == null) return '5,000원';
+    final n = int.tryParse(amount.toString()) ?? 0;
+    return '${n.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},')}원';
+  }
 
   Set<String> get _existingTicketNumbers => tickets
       .map((ticket) => _normalizeTicketNumber(ticket['ticketNumber']?.toString() ?? ''))
@@ -185,15 +224,15 @@ class _TicketScreenState extends State<TicketScreen> {
   }
 
   Future<void> _openTicketRegister() async {
-    final newTicket = await Navigator.push<Map<String, dynamic>>(
+    final registered = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => TicketRegisterScreen(existingNumbers: _existingTicketNumbers),
       ),
     );
 
-    if (newTicket != null && mounted) {
-      setState(() => tickets.add(newTicket));
+    if (registered == true && mounted) {
+      await _loadTickets();
     }
   }
 
@@ -221,7 +260,9 @@ class _TicketScreenState extends State<TicketScreen> {
       ),
       body: Stack(
         children: [
-          tickets.isEmpty
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : tickets.isEmpty
               ? const Center(
                   child: Text(
                     '보유 중인 식권이 없습니다.',
@@ -402,16 +443,6 @@ class _TicketRegisterScreenState extends State<TicketRegisterScreen> {
     return null;
   }
 
-  Map<String, dynamic> _ticketFromNumber(String ticketNumber) {
-    return {
-      'amount': '5,000원',
-      'location': '단국대 학생식당',
-      'validity': '2026.06.02 ~ 2026.07.02',
-      'ticketNumber': ticketNumber,
-      'status': '사용 가능',
-    };
-  }
-
   Future<void> _submitManual() async {
     final ticketNumber = _normalizeTicketNumber(_codeController.text);
     final error = _validate(ticketNumber);
@@ -425,26 +456,46 @@ class _TicketRegisterScreenState extends State<TicketRegisterScreen> {
       _errorText = null;
     });
 
-    await Future.delayed(const Duration(milliseconds: 600));
-
-    if (!mounted) return;
-    Navigator.pop(context, _ticketFromNumber(ticketNumber));
+    try {
+      await ApiService.registerTicket(ticketNumber);
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorText = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
   }
 
-  void _submitScannedTicket(Map<String, dynamic> ticket) {
+  Future<void> _submitScannedTicket(Map<String, dynamic> ticket) async {
     final ticketNumber = _normalizeTicketNumber(ticket['ticketNumber']?.toString() ?? '');
     final error = _validate(ticketNumber);
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
+        );
+      }
       return;
     }
 
-    Navigator.pop(context, {
-      ...ticket,
-      'ticketNumber': ticketNumber,
-    });
+    setState(() => _isLoading = true);
+    try {
+      await ApiService.registerTicket(ticketNumber);
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
   }
 
   @override
@@ -532,7 +583,7 @@ class _TicketRegisterScreenState extends State<TicketRegisterScreen> {
                     MaterialPageRoute(builder: (_) => const QrScannerScreen()),
                   );
                   if (result != null && mounted) {
-                    _submitScannedTicket(result);
+                    await _submitScannedTicket(result);
                   }
                 },
                 icon: const Icon(Icons.crop_free_rounded, size: 18, color: Colors.white),

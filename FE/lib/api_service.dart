@@ -202,6 +202,20 @@ class ApiService {
     throw Exception(err['message'] ?? '인증에 실패했습니다.');
   }
 
+  /// PATCH /auth/password → 비밀번호 변경
+  static Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final res = await _post('/auth/password', {
+      'currentPassword': currentPassword,
+      'newPassword': newPassword,
+    });
+    if (res.statusCode == 200) return;
+    final err = jsonDecode(utf8.decode(res.bodyBytes));
+    throw Exception(err['message'] ?? '비밀번호 변경에 실패했습니다.');
+  }
+
   static Future<void> logout() async {
     try {
       await _post('/auth/logout', {});
@@ -294,24 +308,79 @@ class ApiService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // payment_screen.dart 호환용 인스턴스 메서드
+  // 주문 (Quick Order) — FE 직접 연동용
   // ═══════════════════════════════════════════════════════════════════════
   Future<Map<String, dynamic>> submitPreOrder(Map<String, dynamic> orderDetails) async {
-    final res = await ApiService._post('/orders', orderDetails);
+    final res = await ApiService._post('/orders/quick', orderDetails);
     if (res.statusCode == 200 || res.statusCode == 201) {
       return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     }
-    throw Exception('주문 전송에 실패했습니다. (${res.statusCode})');
+    final err = jsonDecode(utf8.decode(res.bodyBytes));
+    throw Exception(err['message'] ?? '주문 전송에 실패했습니다. (${res.statusCode})');
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // 리뷰 (Reviews) — BE 엔드포인트 구현 후 활성화
+  // 식권 (Tickets)
   // ═══════════════════════════════════════════════════════════════════════
-  Future<Map<String, dynamic>> getMenuReviews(String menuId) async {
+
+  /// GET /tickets → 내 식권 목록
+  static Future<List<dynamic>> getTickets() async {
+    final res = await _get('/tickets');
+    if (res.statusCode == 200) {
+      return jsonDecode(utf8.decode(res.bodyBytes)) as List<dynamic>;
+    }
+    throw Exception('식권 목록을 불러오지 못했습니다. (${res.statusCode})');
+  }
+
+  /// POST /tickets → 식권 번호 등록
+  static Future<Map<String, dynamic>> registerTicket(String ticketNumber) async {
+    final res = await _post('/tickets', {'ticketNumber': ticketNumber});
+    if (res.statusCode == 201) {
+      return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    }
+    final err = jsonDecode(utf8.decode(res.bodyBytes));
+    throw Exception(err['message'] ?? '식권 등록에 실패했습니다.');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 리뷰 (Reviews)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /// GET /menus/me/reviews → 내가 쓴 리뷰 목록
+  static Future<List<dynamic>> getMyReviews() async {
+    final res = await _get('/menus/me/reviews');
+    if (res.statusCode == 200) {
+      return jsonDecode(utf8.decode(res.bodyBytes)) as List<dynamic>;
+    }
+    throw Exception('리뷰를 불러오지 못했습니다. (${res.statusCode})');
+  }
+
+  /// GET /menus/:menuId/reviews → 특정 메뉴 리뷰
+  static Future<Map<String, dynamic>> getMenuReviews(String menuId) async {
     final res = await _get('/menus/$menuId/reviews');
     if (res.statusCode == 200) {
       return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     }
     throw Exception('리뷰를 불러오지 못했습니다. (${res.statusCode})');
+  }
+
+  /// POST /menus/:menuId/reviews → 리뷰 작성
+  static Future<void> submitReview(String menuId, int rating, String comment) async {
+    final res = await _post('/menus/$menuId/reviews', {'rating': rating, 'comment': comment});
+    if (res.statusCode == 200 || res.statusCode == 201) return;
+    final err = jsonDecode(utf8.decode(res.bodyBytes));
+    throw Exception(err['message'] ?? '리뷰 작성에 실패했습니다.');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 문의 (Inquiry)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /// POST /inquiry → 문의 접수
+  static Future<void> submitInquiry(String content) async {
+    final res = await _post('/inquiry', {'content': content});
+    if (res.statusCode == 200 || res.statusCode == 201) return;
+    final err = jsonDecode(utf8.decode(res.bodyBytes));
+    throw Exception(err['message'] ?? '문의 접수에 실패했습니다.');
   }
 }

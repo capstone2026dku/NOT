@@ -10,8 +10,6 @@ class ReviewScreen extends StatelessWidget {
   ReviewScreen({Key? key, required this.menuId, required this.menuName})
       : super(key: key);
 
-  final ApiService _apiService = ApiService();
-
   String _formatDate(dynamic raw) {
     if (raw == null) return '';
     final s = raw.toString();
@@ -47,7 +45,7 @@ class ReviewScreen extends StatelessWidget {
         ),
       ),
       body: FutureBuilder<Map<String, dynamic>>(
-        future: _apiService.getMenuReviews(menuId),
+        future: ApiService.getMenuReviews(menuId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -61,7 +59,7 @@ class ReviewScreen extends StatelessWidget {
           final data = snapshot.data ?? {};
           final List reviewsList = data['reviews'] ?? [];
           final double averageRating =
-              (data['average_rating'] ?? 4.8).toDouble();
+              (data['averageRating'] ?? 0.0).toDouble();
 
           return SingleChildScrollView(
             child: Column(
@@ -140,7 +138,7 @@ class ReviewScreen extends StatelessWidget {
 
   Widget _buildReviewCard(Map<String, dynamic> review) {
     final int rating = (review['rating'] as num?)?.toInt() ?? 5;
-    final String username = review['username']?.toString() ?? '단국대생';
+    final String username = (review['user'] as Map?)?['name']?.toString() ?? '단국대생';
     final String dateStr = _formatDate(review['date'] ?? review['createdAt']);
     final String? imageUrl = review['imageUrl']?.toString();
     final String comment = review['comment']?.toString() ?? '';

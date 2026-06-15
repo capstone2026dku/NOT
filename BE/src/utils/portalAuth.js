@@ -77,9 +77,12 @@ async function authenticate(studentId, password) {
     throw { code: 'INVALID_FORMAT', message: '학번은 8자리 숫자여야 합니다.' };
   }
 
-  // 전략 3: Mock (개발 환경)
+  // 전략 3: Mock (개발 환경) — TEST_ACCOUNTS에 있는 학번은 mock 처리, 없으면 포털로 fallthrough
   if (process.env.NODE_ENV === 'development' && process.env.PORTAL_MOCK === 'true') {
-    return await mockAuth(studentId, password);
+    const accounts = parseMockAccounts();
+    if (accounts[studentId]) {
+      return await mockAuth(studentId, password);
+    }
   }
 
   // 전략 1: 공식 API

@@ -23,6 +23,114 @@ async function issueOrderNumber(restaurantCode) {
   return `${prefix}${String(seq).padStart(3, '0')}`;
 }
 
+// POST /orders/quick — FE 직접 연동용 간소화 주문 (결제 프로세스 없이 바로 주문 생성)
+router.post('/quick', authenticate, async (req, res, next) => {
+  try {
+    const { restaurantName, itemName, quantity = 1, totalPrice, paymentMethod, ticketId } = req.body;
+    if (!restaurantName || !itemName || !totalPrice) {
+      return res.status(400).json({ code: 'MISSING_FIELDS', message: 'restaurantName, itemName, totalPrice 필요' });
+    }
+
+    // 식권 결제 시 유효성 검증
+    let ticket = null;
+    if (paymentMethod === 'meal_ticket') {
+      if (!ticketId) {
+        return res.status(400).json({ code: 'MISSING_TICKET', message: '식권 ID가 필요합니다.' });
+      }
+      ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+      if (!ticket || ticket.userId !== req.user.userId) {
+        return res.status(404).json({ code: 'TICKET_NOT_FOUND', message: '식권을 찾을 수 없습니다.' });
+      }
+      if (ticket.status !== 'AVAILABLE') {
+        return res.status(409).json({ code: 'TICKET_UNAVAILABLE', message: '이미 사용된 식권입니다.' });
+      }
+      if (ticket.amount < totalPrice) {
+        return res.status(422).json({ code: 'TICKET_INSUFFICIENT', message: '식권 금액이 부족합니다.' });
+      }
+      const now = new Date();
+      if (now < ticket.validFrom || now > ticket.validUntil) {
+        return res.status(422).json({ code: 'TICKET_EXPIRED', message: '유효기간이 지난 식권입니다.' });
+      }
+    }
+
+    const menu = await prisma.menu.findFirst({
+      where: {
+        name: itemName,
+        restaurant: { name: restaurantName },
+        isActive: true,
+      },
+      include: { restaurant: true },
+    });
+
+    if (!menu) {
+      return res.status(404).json({ code: 'MENU_NOT_FOUND', message: '메뉴를 찾을 수 없습니다.' });
+    }
+    if (menu.isSoldout) {
+      return res.status(422).json({ code: 'SOLDOUT', message: '품절된 메뉴입니다.' });
+    }
+
+    const idempotencyKey = uuidv4();
+    const orderNumber = await issueOrderNumber(menu.restaurant.code);
+
+    const order = await prisma.$transaction(async (tx) => {
+      const newOrder = await tx.order.create({
+        data: {
+          userId: req.user.userId,
+          totalPrice,
+          idempotencyKey,
+          status: 'PAID',
+          paidAt: new Date(),
+        },
+      });
+
+      await tx.payment.create({
+        data: {
+          orderId: newOrder.id,
+          provider: paymentMethod === 'kakaopay' ? 'kakaopay' : 'meal_ticket',
+          providerTxId: ticket ? ticket.ticketNumber : null,
+          status: 'PAID',
+          amount: totalPrice,
+          paidAt: new Date(),
+        },
+      });
+
+      await tx.orderItem.create({
+        data: {
+          orderId: newOrder.id,
+          menuId: menu.id,
+          restaurantId: menu.restaurantId,
+          orderNumber,
+          quantity,
+          unitPrice: menu.price,
+        },
+      });
+
+      // 식권 사용 처리
+      if (ticket) {
+        await tx.ticket.update({
+          where: { id: ticket.id },
+          data: { status: 'USED', usedAt: new Date() },
+        });
+      }
+
+      return newOrder;
+    });
+
+    broadcastToKitchen(menu.restaurantId, {
+      type: 'NEW_ORDER',
+      order: { id: order.id, orderNumber, itemName, quantity },
+    });
+
+    res.status(201).json({
+      orderId: order.id,
+      orderNumber,
+      estimatedWaitSec: menu.cookTimeSec * quantity,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /orders/validate — 결제 전 검증 + idempotencyKey 발급
 router.post('/validate', authenticate, async (req, res, next) => {
   try {

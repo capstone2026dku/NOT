@@ -3,6 +3,10 @@ CREATE TABLE "users" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "student_id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "google_sub" TEXT,
+    "password_hash" TEXT,
+    "is_admin" BOOLEAN NOT NULL DEFAULT false,
     "phone" TEXT,
     "fcm_token" TEXT,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -13,7 +17,6 @@ CREATE TABLE "restaurants" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "name" TEXT NOT NULL,
     "code" TEXT NOT NULL,
-    "max_load_score" INTEGER NOT NULL DEFAULT 600,
     "is_locked" BOOLEAN NOT NULL DEFAULT false,
     "locked_until" DATETIME,
     "open_time" TEXT NOT NULL,
@@ -74,27 +77,48 @@ CREATE TABLE "payments" (
 );
 
 -- CreateTable
-CREATE TABLE "load_logs" (
+CREATE TABLE "tickets" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "restaurant_id" TEXT NOT NULL,
-    "load_score" INTEGER NOT NULL,
-    "estimated_wait_sec" INTEGER NOT NULL,
-    "actual_wait_sec" INTEGER,
-    "recorded_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "load_logs_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "restaurants" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    "user_id" TEXT NOT NULL,
+    "ticket_number" TEXT NOT NULL,
+    "amount" INTEGER NOT NULL,
+    "location" TEXT NOT NULL DEFAULT '단국대 학생식당',
+    "valid_from" DATETIME NOT NULL,
+    "valid_until" DATETIME NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'AVAILABLE',
+    "used_at" DATETIME,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "tickets_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "reviews" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "user_id" TEXT NOT NULL,
+    "menu_id" TEXT NOT NULL,
+    "rating" INTEGER NOT NULL,
+    "comment" TEXT,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "reviews_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "reviews_menu_id_fkey" FOREIGN KEY ("menu_id") REFERENCES "menus" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "inquiries" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "user_id" TEXT NOT NULL,
+    "content" TEXT NOT NULL,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "inquiries_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateIndex
 CREATE UNIQUE INDEX "users_student_id_key" ON "users"("student_id");
-
--- CreateIndex
+CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
+CREATE UNIQUE INDEX "users_google_sub_key" ON "users"("google_sub");
 CREATE UNIQUE INDEX "restaurants_code_key" ON "restaurants"("code");
-
--- CreateIndex
 CREATE UNIQUE INDEX "orders_idempotency_key_key" ON "orders"("idempotency_key");
-
--- CreateIndex
 CREATE UNIQUE INDEX "payments_order_id_key" ON "payments"("order_id");
-
--- CreateIndex
 CREATE UNIQUE INDEX "payments_provider_tx_id_key" ON "payments"("provider_tx_id");
+CREATE UNIQUE INDEX "tickets_ticket_number_key" ON "tickets"("ticket_number");
+CREATE UNIQUE INDEX "reviews_user_id_menu_id_key" ON "reviews"("user_id", "menu_id");

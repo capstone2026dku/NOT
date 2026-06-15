@@ -499,7 +499,7 @@ class _CafeteriaMenuScreenState extends State<CafeteriaMenuScreen> {
     int extras = 0;
 
     // 리뷰 Future는 모달 열릴 때 한 번만 생성
-    final reviewsFuture = ApiService().getMenuReviews(menu.id);
+    final reviewsFuture = ApiService.getMenuReviews(menu.id);
     final outerContext = context;
 
     showModalBottomSheet(

@@ -1,13 +1,16 @@
 // lib/review_write_screen.dart
 import 'package:flutter/material.dart';
 import 'app_theme.dart';
+import 'api_service.dart';
 
 class ReviewWriteScreen extends StatefulWidget {
+  final String menuId;
   final String menuName;
   final String restaurantName;
 
   const ReviewWriteScreen({
     Key? key,
+    required this.menuId,
     required this.menuName,
     required this.restaurantName,
   }) : super(key: key);
@@ -18,6 +21,7 @@ class ReviewWriteScreen extends StatefulWidget {
 
 class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
   int _stars = 0;
+  bool _submitting = false;
   final TextEditingController _textCtrl = TextEditingController();
 
   @override
@@ -26,7 +30,22 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
     super.dispose();
   }
 
-  bool get _canSubmit => _textCtrl.text.trim().isNotEmpty;
+  bool get _canSubmit => _stars > 0 && _textCtrl.text.trim().isNotEmpty && !_submitting;
+
+  Future<void> _submit() async {
+    setState(() => _submitting = true);
+    try {
+      await ApiService.submitReview(widget.menuId, _stars, _textCtrl.text.trim());
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _submitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '')), backgroundColor: Colors.redAccent),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -182,9 +201,9 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
                   borderRadius: BorderRadius.circular(14)),
               elevation: 0,
             ),
-            onPressed: _canSubmit ? () => Navigator.pop(context, true) : null,
+            onPressed: _canSubmit ? _submit : null,
             child: Text(
-              '등록하기',
+              _submitting ? '제출 중...' : '등록하기',
               style: TextStyle(
                 color: _canSubmit ? Colors.white : AppColors.textMuted,
                 fontWeight: FontWeight.bold,

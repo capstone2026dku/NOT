@@ -51,4 +51,48 @@ router.get('/weather', authenticate, async (req, res, next) => {
   }
 });
 
+// GET /recommendations/popular — 오늘 주문 수 기반 인기 메뉴
+router.get('/popular', authenticate, async (req, res, next) => {
+  try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const popular = await prisma.orderItem.groupBy({
+      by: ['menuId'],
+      where: { order: { createdAt: { gte: todayStart }, status: { in: ['PAID', 'PARTIALLY_COMPLETED', 'COMPLETED'] } } },
+      _sum: { quantity: true },
+      orderBy: { _sum: { quantity: 'desc' } },
+      take: 10,
+    });
+
+    if (popular.length === 0) {
+      const menus = await prisma.menu.findMany({
+        where: { isActive: true, isSoldout: false },
+        include: { restaurant: true },
+        take: 10,
+      });
+      return res.json(menus);
+    }
+
+    const menuIds = popular.map((p) => p.menuId);
+    const menus = await prisma.menu.findMany({
+      where: { id: { in: menuIds }, isActive: true },
+      include: { restaurant: true },
+    });
+
+    const menuMap = new Map(menus.map((m) => [m.id, m]));
+    const result = popular
+      .map((p) => {
+        const menu = menuMap.get(p.menuId);
+        if (!menu) return null;
+        return { ...menu, orderCount: p._sum.quantity };
+      })
+      .filter(Boolean);
+
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

@@ -546,6 +546,9 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen>
         final firstMenuName = items.isNotEmpty
             ? ((items.first['menu'] as Map?)?['name'] as String? ?? '')
             : '';
+        final firstMenuId = items.isNotEmpty
+            ? (items.first['menuId']?.toString() ?? '')
+            : '';
 
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
@@ -653,6 +656,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen>
                 Padding(
                   padding: const EdgeInsets.all(12),
                   child: _ReviewButton(
+                    menuId: firstMenuId,
                     menuName: firstMenuName,
                     restaurantName: restaurantName,
                   ),
@@ -667,11 +671,12 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen>
 
 // ── 리뷰 버튼 (작성 전/후 상태 보존) ──────────────────────────────────────────
 class _ReviewButton extends StatefulWidget {
+  final String menuId;
   final String menuName;
   final String restaurantName;
 
   const _ReviewButton(
-      {required this.menuName, required this.restaurantName});
+      {required this.menuId, required this.menuName, required this.restaurantName});
 
   @override
   State<_ReviewButton> createState() => _ReviewButtonState();
@@ -718,6 +723,7 @@ class _ReviewButtonState extends State<_ReviewButton> {
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
           builder: (_) => ReviewWriteScreen(
+            menuId: widget.menuId,
             menuName: widget.menuName,
             restaurantName: widget.restaurantName,
           ),

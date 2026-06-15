@@ -30,14 +30,35 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   int flowStep = 0;
   String selectedMethod = '카카오페이';
-  int? _selectedTicketValue;
+  Map<String, dynamic>? _selectedTicket;
 
-  static const String _ticketPeriod = '2026.05.01 ~ 2026.12.31';
-  static const List<Map<String, dynamic>> _tickets = [
-    {'label': '5,000원권', 'value': 5000},
-    {'label': '10,000원권', 'value': 10000},
-    {'label': '15,000원권', 'value': 15000},
-  ];
+  String _orderNumber = '';
+  int _estimatedWaitSec = 0;
+
+  List<dynamic> _dbTickets = [];
+  bool _ticketsLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTickets();
+  }
+
+  Future<void> _loadTickets() async {
+    setState(() => _ticketsLoading = true);
+    try {
+      final tickets = await ApiService.getTickets();
+      final now = DateTime.now();
+      final available = tickets.where((t) {
+        final status = t['status'] as String? ?? '';
+        final validUntil = DateTime.tryParse(t['validUntil']?.toString() ?? '');
+        return status == 'AVAILABLE' && (validUntil == null || now.isBefore(validUntil));
+      }).toList();
+      if (mounted) setState(() { _dbTickets = available; _ticketsLoading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _ticketsLoading = false);
+    }
+  }
 
   String _formatPrice(int price) => price
       .toString()
@@ -46,13 +67,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   bool get _canPay {
     if (selectedMethod == '카카오페이') return true;
-    return _selectedTicketValue != null &&
-        _selectedTicketValue! >= widget.totalAmount;
+    return _selectedTicket != null &&
+        (_selectedTicket!['amount'] as int) >= widget.totalAmount;
   }
 
   bool get _ticketInsufficient =>
-      _selectedTicketValue != null &&
-      _selectedTicketValue! < widget.totalAmount;
+      _selectedTicket != null &&
+      (_selectedTicket!['amount'] as int) < widget.totalAmount;
 
   @override
   Widget build(BuildContext context) {
@@ -211,7 +232,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     return GestureDetector(
       onTap: () => setState(() {
         selectedMethod = '카카오페이';
-        _selectedTicketValue = null;
+        _selectedTicket = null;
       }),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -340,10 +361,21 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         color: AppColors.textDark)),
               ),
               const SizedBox(height: 12),
-              ..._tickets.map((t) => _buildTicketOption(
-                    t['value'] as int,
-                    t['label'] as String,
-                  )),
+              if (_ticketsLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              else if (_dbTickets.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    '등록된 식권이 없습니다. 식권 관리에서 등록해주세요.',
+                    style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+                  ),
+                )
+              else
+                ..._dbTickets.map((t) => _buildTicketOption(t as Map<String, dynamic>)),
               const SizedBox(height: 10),
               // 항상 표시되는 안내 박스
               Container(
@@ -394,18 +426,26 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  Widget _buildTicketOption(int value, String label) {
-    final bool isSelected = _selectedTicketValue == value;
+  Widget _buildTicketOption(Map<String, dynamic> ticket) {
+    final String id = ticket['id']?.toString() ?? '';
+    final int amount = (ticket['amount'] as num?)?.toInt() ?? 0;
+    final String ticketNumber = ticket['ticketNumber']?.toString() ?? '';
+    final String? validUntilRaw = ticket['validUntil']?.toString();
+    final DateTime? validUntil = validUntilRaw != null ? DateTime.tryParse(validUntilRaw) : null;
+    final String periodStr = validUntil != null
+        ? '~${validUntil.year}.${validUntil.month.toString().padLeft(2, '0')}.${validUntil.day.toString().padLeft(2, '0')}'
+        : '';
+    final bool isSelected = _selectedTicket?['id'] == id;
+
     return GestureDetector(
-      onTap: () => setState(() => _selectedTicketValue = value),
+      onTap: () => setState(() => _selectedTicket = ticket),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color:
-                isSelected ? AppColors.primary : const Color(0xFFE2E8F0),
+            color: isSelected ? AppColors.primary : const Color(0xFFE2E8F0),
           ),
         ),
         child: Row(
@@ -414,17 +454,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label,
+                  Text('${_formatPrice(amount)}원권',
                       style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
-                          color: isSelected
-                              ? AppColors.primary
-                              : AppColors.textDark)),
+                          color: isSelected ? AppColors.primary : AppColors.textDark)),
                   const SizedBox(height: 2),
-                  Text('사용 가능 기간: $_ticketPeriod',
-                      style: const TextStyle(
-                          fontSize: 11, color: AppColors.textMuted)),
+                  Text('$ticketNumber  $periodStr',
+                      style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
                 ],
               ),
             ),
@@ -432,8 +469,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               isSelected
                   ? Icons.radio_button_checked_rounded
                   : Icons.radio_button_off_rounded,
-              color:
-                  isSelected ? AppColors.primary : const Color(0xFFCBD5E1),
+              color: isSelected ? AppColors.primary : const Color(0xFFCBD5E1),
               size: 22,
             ),
           ],
@@ -619,7 +655,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             color: AppColors.textLight,
                             fontWeight: FontWeight.w500)),
                     const SizedBox(height: 8),
-                    Text('834',
+                    Text(_orderNumber.isNotEmpty ? _orderNumber : '-',
                         style: TextStyle(
                             fontSize: 40,
                             fontWeight: FontWeight.bold,
@@ -635,8 +671,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             color: AppColors.textLight,
                             fontWeight: FontWeight.w500)),
                     const SizedBox(height: 8),
-                    const Text('7분',
-                        style: TextStyle(
+                    Text(_estimatedWaitSec > 0 ? '${(_estimatedWaitSec / 60).ceil()}분' : '-',
+                        style: const TextStyle(
                             fontSize: 36,
                             fontWeight: FontWeight.bold,
                             color: AppColors.textDark)),
@@ -677,19 +713,28 @@ class _PaymentScreenState extends State<PaymentScreen> {
       "itemName": widget.itemName,
       "quantity": widget.itemQuantity,
       "totalPrice": widget.totalAmount,
-      "paymentMethod":
-          selectedMethod == '카카오페이' ? "kakaopay" : "meal_ticket",
+      "paymentMethod": selectedMethod == '카카오페이' ? "kakaopay" : "meal_ticket",
+      if (selectedMethod != '카카오페이' && _selectedTicket != null)
+        "ticketId": _selectedTicket!['id'],
     };
 
     try {
-      await _apiService.submitPreOrder(orderPayload);
+      final result = await _apiService.submitPreOrder(orderPayload);
+      final orderNumber = result['orderNumber']?.toString() ?? '';
+      final estimatedWaitSec = (result['estimatedWaitSec'] as num?)?.toInt() ?? 0;
       await NotificationService.showOrderAccepted(
         restaurantName: widget.restaurantName,
         itemName: widget.itemName,
         quantity: widget.itemQuantity,
         totalAmount: widget.totalAmount,
       );
-      if (mounted) setState(() => flowStep = 2);
+      if (mounted) {
+        setState(() {
+          _orderNumber = orderNumber;
+          _estimatedWaitSec = estimatedWaitSec;
+          flowStep = 2;
+        });
+      }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

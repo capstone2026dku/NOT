@@ -13,11 +13,49 @@ class ThousandWonMealScreen extends StatefulWidget {
 }
 
 class _ThousandWonMealScreenState extends State<ThousandWonMealScreen> {
-  // Static menu items matching your design
-  final List<Map<String, dynamic>> morningMenus = [
-    {'name': '제육덮밥', 'price': '1,000원'},
-    {'name': '스팸마요 덮밥', 'price': '1,000원'},
-  ];
+  List<Map<String, dynamic>> morningMenus = [];
+  bool _isLoadingMenus = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMenus();
+  }
+
+  Future<void> _loadMenus() async {
+    try {
+      final restaurants = await ApiService.getRestaurants();
+      final thousandWon = restaurants.firstWhere(
+        (r) => (r['name'] as String).contains('천원') || (r['name'] as String).contains('1000'),
+        orElse: () => null,
+      );
+
+      List<dynamic> menus = [];
+      if (thousandWon != null) {
+        menus = await ApiService.getRestaurantMenus(thousandWon['id'] as String);
+      } else if (restaurants.isNotEmpty) {
+        menus = await ApiService.getRestaurantMenus(restaurants.first['id'] as String);
+        menus = menus.where((m) => (m['price'] as int) <= 1000).toList();
+      }
+
+      if (mounted) {
+        setState(() {
+          morningMenus = menus.map((m) {
+            final price = m['price'] as int;
+            return {
+              'id': m['id'],
+              'name': m['name'],
+              'price': '${price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (x) => '${x[1]},')}원',
+              'priceInt': price,
+            };
+          }).toList();
+          _isLoadingMenus = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingMenus = false);
+    }
+  }
 
   // Helper method to display the Kiosk Student Validation Modal
   void _showQrValidationModal(BuildContext context) async {
@@ -134,20 +172,7 @@ class _ThousandWonMealScreenState extends State<ThousandWonMealScreen> {
   backgroundColor: Colors.white,
   elevation: 0,
   // 👇 ADD THIS ACTIONS BAR HERE
-  actions: [
-    IconButton(
-      icon: const Icon(Icons.shopping_bag_outlined, color: AppColors.textDark, size: 22),
-      onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const CartScreen(menuName: '제육덮밥', priceString: '1,000원'),
-          ),
-        );
-      },
-    ),
-    const SizedBox(width: 8),
-  ],
+  actions: const [],
   bottom: PreferredSize(
     preferredSize: const Size.fromHeight(1),
     child: Container(color: const Color(0xFFE2E8F0), height: 0.5),
@@ -218,6 +243,16 @@ class _ThousandWonMealScreenState extends State<ThousandWonMealScreen> {
             const SizedBox(height: 16),
 
             // 4. Breakfast Available Menu List View Node Builder
+            if (_isLoadingMenus)
+              const Center(child: CircularProgressIndicator())
+            else if (morningMenus.isEmpty)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Text('오늘의 메뉴가 없습니다.', style: TextStyle(color: Color(0xFF64748B))),
+                ),
+              )
+            else
             ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),

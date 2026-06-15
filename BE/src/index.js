@@ -15,6 +15,8 @@ const paymentsRouter = require('./routes/payments');
 const kitchenRouter = require('./routes/kitchen');
 const adminRouter = require('./routes/admin');
 const recommendationsRouter = require('./routes/recommendations');
+const ticketsRouter = require('./routes/tickets');
+const inquiryRouter = require('./routes/inquiry');
 
 const app = express();
 const server = http.createServer(app);
@@ -34,6 +36,8 @@ app.use('/payments', paymentsRouter);
 app.use('/kitchen', kitchenRouter);
 app.use('/admin', adminRouter);
 app.use('/recommendations', recommendationsRouter);
+app.use('/tickets', ticketsRouter);
+app.use('/inquiry', inquiryRouter);
 
 // 에러 핸들러 (마지막에 등록)
 app.use(errorHandler);
