@@ -15,25 +15,40 @@ class _SignupScreenState extends State<SignupScreen> {
   final _studentIdController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
+
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
   bool _agreeTerms = false;
   bool _isLoading = false;
 
   bool get _isFormValid =>
-      _nameController.text.isNotEmpty &&
-      _studentIdController.text.isNotEmpty &&
+      _nameController.text.trim().isNotEmpty &&
+      _studentIdController.text.trim().isNotEmpty &&
       _passwordController.text.isNotEmpty &&
       _confirmController.text.isNotEmpty &&
       _agreeTerms;
 
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _studentIdController.dispose();
+    _passwordController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
+
   Future<void> _handleNext() async {
+    if (_isLoading) return;
+
     final name = _nameController.text.trim();
     final studentId = _studentIdController.text.trim();
     final password = _passwordController.text;
     final confirm = _confirmController.text;
 
+    if (name.isEmpty || studentId.isEmpty) return;
+
     if (password != confirm) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('비밀번호가 일치하지 않습니다.'),
@@ -44,42 +59,38 @@ class _SignupScreenState extends State<SignupScreen> {
     }
 
     setState(() => _isLoading = true);
+
     try {
       await ApiService.sendOtp(
-          name: name, studentId: studentId, password: password);
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => OtpVerificationScreen(
-              studentId: studentId,
-              name: name,
-              password: password,
-            ),
+        name: name,
+        studentId: studentId,
+        password: password,
+      );
+
+      if (!mounted) return;
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OtpVerificationScreen(
+            studentId: studentId,
+            name: name,
+            password: password,
           ),
-        );
-      }
+        ),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceFirst('Exception: ', '')),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-      }
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _studentIdController.dispose();
-    _passwordController.dispose();
-    _confirmController.dispose();
-    super.dispose();
   }
 
   Widget _label(String text) => Padding(
@@ -96,7 +107,10 @@ class _SignupScreenState extends State<SignupScreen> {
 
   InputDecoration _inputDeco({String? hint}) => InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 14),
+        hintStyle: const TextStyle(
+          color: AppColors.textMuted,
+          fontSize: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppColors.border),
@@ -107,10 +121,15 @@ class _SignupScreenState extends State<SignupScreen> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+          borderSide: const BorderSide(
+            color: AppColors.primary,
+            width: 1.5,
+          ),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       );
 
   @override
@@ -122,16 +141,20 @@ class _SignupScreenState extends State<SignupScreen> {
           children: [
             Expanded(
               child: SingleChildScrollView(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 뒤로가기
                     GestureDetector(
                       onTap: () => Navigator.pop(context),
-                      child: const Icon(Icons.arrow_back_ios_new,
-                          size: 20, color: AppColors.textDark),
+                      child: const Icon(
+                        Icons.arrow_back_ios_new,
+                        size: 20,
+                        color: AppColors.textDark,
+                      ),
                     ),
                     const SizedBox(height: 20),
 
@@ -145,22 +168,24 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      '시작하려면 단국대학교 웹메일로 계정을 생성해주세요.',
-                      style: TextStyle(fontSize: 13, color: AppColors.textLight),
+                      '단국대학교 계정으로 가입하세요.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textLight,
+                      ),
                     ),
                     const SizedBox(height: 28),
 
-                    // 이름
                     _label('이름'),
                     TextField(
                       controller: _nameController,
                       onChanged: (_) => setState(() {}),
                       decoration: _inputDeco(),
                     ),
+
                     const SizedBox(height: 16),
 
-                    // 웹메일 주소
-                    _label('웹메일 주소'),
+                    _label('웹메일'),
                     Row(
                       children: [
                         Expanded(
@@ -174,7 +199,9 @@ class _SignupScreenState extends State<SignupScreen> {
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 14),
+                            horizontal: 12,
+                            vertical: 14,
+                          ),
                           decoration: BoxDecoration(
                             border: Border.all(color: AppColors.border),
                             borderRadius: BorderRadius.circular(12),
@@ -182,14 +209,16 @@ class _SignupScreenState extends State<SignupScreen> {
                           child: const Text(
                             '@dankook.ac.kr',
                             style: TextStyle(
-                                fontSize: 13, color: AppColors.textLight),
+                              fontSize: 13,
+                              color: AppColors.textLight,
+                            ),
                           ),
                         ),
                       ],
                     ),
+
                     const SizedBox(height: 16),
 
-                    // 비밀번호
                     _label('비밀번호'),
                     TextField(
                       controller: _passwordController,
@@ -201,17 +230,16 @@ class _SignupScreenState extends State<SignupScreen> {
                             _obscurePassword
                                 ? Icons.visibility_off_outlined
                                 : Icons.visibility_outlined,
-                            color: AppColors.textMuted,
-                            size: 20,
                           ),
-                          onPressed: () =>
-                              setState(() => _obscurePassword = !_obscurePassword),
+                          onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword,
+                          ),
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 16),
 
-                    // 비밀번호 확인
                     _label('비밀번호 확인'),
                     TextField(
                       controller: _confirmController,
@@ -223,71 +251,42 @@ class _SignupScreenState extends State<SignupScreen> {
                             _obscureConfirm
                                 ? Icons.visibility_off_outlined
                                 : Icons.visibility_outlined,
-                            color: AppColors.textMuted,
-                            size: 20,
                           ),
-                          onPressed: () =>
-                              setState(() => _obscureConfirm = !_obscureConfirm),
+                          onPressed: () => setState(
+                            () => _obscureConfirm = !_obscureConfirm,
+                          ),
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 20),
 
-                    // 이용약관 동의
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: Checkbox(
-                            value: _agreeTerms,
-                            onChanged: (v) =>
-                                setState(() => _agreeTerms = v ?? false),
-                            activeColor: AppColors.primary,
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(4)),
-                          ),
+                        Checkbox(
+                          value: _agreeTerms,
+                          onChanged: (v) =>
+                              setState(() => _agreeTerms = v ?? false),
+                          activeColor: AppColors.primary,
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: RichText(
-                            text: const TextSpan(
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  color: AppColors.textLight,
-                                  fontFamily: 'Pretendard'),
-                              children: [
-                                TextSpan(text: '서비스 '),
-                                TextSpan(
-                                  text: '이용약관',
-                                  style: TextStyle(
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.w600),
-                                ),
-                                TextSpan(text: ' 및 '),
-                                TextSpan(
-                                  text: '개인정보 처리방침',
-                                  style: TextStyle(
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.w600),
-                                ),
-                                TextSpan(text: '에 동의합니다.'),
-                              ],
+                        const Expanded(
+                          child: Text(
+                            '이용약관 및 개인정보 처리방침에 동의',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textLight,
                             ),
                           ),
                         ),
                       ],
                     ),
+
                     const SizedBox(height: 28),
                   ],
                 ),
               ),
             ),
 
-            // 다음 버튼
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
               child: SizedBox(
@@ -298,24 +297,22 @@ class _SignupScreenState extends State<SignupScreen> {
                     backgroundColor: _isFormValid
                         ? AppColors.primary
                         : const Color(0xFFB0BEC5),
-                    foregroundColor: Colors.white,
-                    elevation: 0,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
-                  onPressed: (_isFormValid && !_isLoading) ? _handleNext : null,
+                  onPressed:
+                      (_isFormValid && !_isLoading) ? _handleNext : null,
                   child: _isLoading
                       ? const SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
-                      : const Text(
-                          '다음',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w600),
-                        ),
+                      : const Text('다음'),
                 ),
               ),
             ),

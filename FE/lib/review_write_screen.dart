@@ -7,10 +7,10 @@ class ReviewWriteScreen extends StatefulWidget {
   final String restaurantName;
 
   const ReviewWriteScreen({
-    Key? key,
+    super.key,
     required this.menuName,
     required this.restaurantName,
-  }) : super(key: key);
+  });
 
   @override
   State<ReviewWriteScreen> createState() => _ReviewWriteScreenState();
@@ -20,17 +20,49 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
   int _stars = 0;
   final TextEditingController _textCtrl = TextEditingController();
 
+  bool _isSubmitting = false;
+
+  bool get _canSubmit =>
+      _textCtrl.text.trim().isNotEmpty && _stars > 0;
+
   @override
   void dispose() {
     _textCtrl.dispose();
     super.dispose();
   }
 
-  bool get _canSubmit => _textCtrl.text.trim().isNotEmpty;
+  void _submit() async {
+    if (!_canSubmit || _isSubmitting) return;
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      // 실제 API 붙이면 여기서 호출
+      final result = {
+        "menuName": widget.menuName,
+        "restaurantName": widget.restaurantName,
+        "rating": _stars,
+        "comment": _textCtrl.text.trim(),
+      };
+
+      if (!mounted) return;
+      Navigator.pop(context, result);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('등록 실패: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
+
     return Container(
       padding: EdgeInsets.fromLTRB(24, 16, 24, bottom + 24),
       decoration: const BoxDecoration(
@@ -41,7 +73,6 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 드래그 핸들
           Center(
             child: Container(
               width: 36,
@@ -52,16 +83,20 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
               ),
             ),
           ),
+
           const SizedBox(height: 16),
-          // 타이틀 + 닫기 버튼
+
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('리뷰 작성',
-                  style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textDark)),
+              const Text(
+                '리뷰 작성',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textDark,
+                ),
+              ),
               GestureDetector(
                 onTap: () => Navigator.pop(context),
                 child: const Icon(Icons.close,
@@ -69,8 +104,9 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
               ),
             ],
           ),
+
           const SizedBox(height: 16),
-          // 메뉴명 박스
+
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(14),
@@ -81,34 +117,48 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('간단한 리뷰를 작성해 주세요!',
-                    style: TextStyle(
-                        fontSize: 11, color: AppColors.textMuted)),
-                const SizedBox(height: 3),
-                Text(widget.menuName,
-                    style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textDark)),
+                const Text(
+                  '간단한 리뷰를 작성해 주세요!',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  widget.menuName,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textDark,
+                  ),
+                ),
               ],
             ),
           ),
+
           const SizedBox(height: 22),
-          // 별점
+
           Center(
             child: Column(
               children: [
-                const Text('이 메뉴는 어떠셨나요?',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textDark)),
+                const Text(
+                  '이 메뉴는 어떠셨나요?',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textDark,
+                  ),
+                ),
                 const SizedBox(height: 12),
+
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: List.generate(5, (i) {
                     return GestureDetector(
-                      onTap: () => setState(() => _stars = i + 1),
+                      onTap: () {
+                        setState(() => _stars = i + 1);
+                      },
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 6),
                         child: Icon(
@@ -125,16 +175,24 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
               ],
             ),
           ),
+
           const SizedBox(height: 20),
-          // 텍스트 입력
+
           TextField(
             controller: _textCtrl,
             maxLines: 4,
-            style: const TextStyle(fontSize: 14, color: AppColors.textDark),
+            onChanged: (_) => setState(() {}),
+            style: const TextStyle(
+              fontSize: 14,
+              color: AppColors.textDark,
+            ),
             decoration: InputDecoration(
-              hintText: '음식의 맛, 양, 포장 상태 등에 대한 솔직한 리뷰를 남겨주세요.',
+              hintText:
+                  '음식의 맛, 양, 포장 상태 등에 대한 솔직한 리뷰를 남겨주세요.',
               hintStyle: const TextStyle(
-                  color: AppColors.textMuted, fontSize: 13),
+                color: AppColors.textMuted,
+                fontSize: 13,
+              ),
               filled: true,
               fillColor: const Color(0xFFF8FAFC),
               contentPadding: const EdgeInsets.all(14),
@@ -147,49 +205,43 @@ class _ReviewWriteScreenState extends State<ReviewWriteScreen> {
                 borderSide: const BorderSide(color: AppColors.primary),
               ),
             ),
-            onChanged: (_) => setState(() {}),
           ),
-          const SizedBox(height: 14),
-          // 사진 추가
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: const Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.camera_alt_outlined,
-                    color: AppColors.textMuted, size: 26),
-                SizedBox(height: 4),
-                Text('사진 추가',
-                    style:
-                        TextStyle(fontSize: 11, color: AppColors.textMuted)),
-              ],
-            ),
-          ),
+
           const SizedBox(height: 16),
-          // 등록하기 버튼
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor:
-                  _canSubmit ? AppColors.primary : const Color(0xFFE2E8F0),
-              minimumSize: const Size(double.infinity, 52),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
-              elevation: 0,
-            ),
-            onPressed: _canSubmit ? () => Navigator.pop(context, true) : null,
-            child: Text(
-              '등록하기',
-              style: TextStyle(
-                color: _canSubmit ? Colors.white : AppColors.textMuted,
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
+
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _canSubmit
+                    ? AppColors.primary
+                    : const Color(0xFFE2E8F0),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
+              onPressed: _canSubmit ? _submit : null,
+              child: _isSubmitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(
+                      '등록하기',
+                      style: TextStyle(
+                        color: _canSubmit
+                            ? Colors.white
+                            : AppColors.textMuted,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
             ),
           ),
         ],

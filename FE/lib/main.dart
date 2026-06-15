@@ -80,7 +80,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
 
   final List<Widget> _appScreens = [
     const HomeDashboardScreen(),
-    const TicketScreen(),
+   /// const TicketScreen(),
     const OrderHistoryScreen(),
     const ProfileScreen(),
   ];
