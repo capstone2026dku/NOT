@@ -135,6 +135,6 @@ flutter run --dart-define=GOOGLE_WEB_CLIENT_ID=your-web-client-id.apps.googleuse
 
 | 역할 | 담당 |
 |------|------|
-| FE (Flutter) | 팀 전체 |
-| BE (Node.js) | 팀 전체 |
-| AI (Python) | [Yoo, J. H.](https://github.com/YooJunHyuk123) |
+| FE (Flutter) | 해롤드, 서주연 |
+| BE (Node.js) | 제연우, 서주연 |
+| AI (Python) | 유준혁 |
