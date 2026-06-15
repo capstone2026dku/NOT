@@ -1,4 +1,5 @@
 const express = require('express');
+const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middlewares/auth');
@@ -23,12 +24,33 @@ async function issueOrderNumber(restaurantCode) {
   return `${prefix}${String(seq).padStart(3, '0')}`;
 }
 
-// POST /orders/quick — FE 직접 연동용 간소화 주문 (결제 프로세스 없이 바로 주문 생성)
+// POST /orders/quick — FE 직접 연동용 간소화 주문
 router.post('/quick', authenticate, async (req, res, next) => {
   try {
-    const { restaurantName, itemName, quantity = 1, totalPrice, paymentMethod, ticketId } = req.body;
+    const { restaurantName, itemName, quantity = 1, totalPrice, paymentMethod, ticketId, paymentKey, tossOrderId } = req.body;
     if (!restaurantName || !itemName || !totalPrice) {
       return res.status(400).json({ code: 'MISSING_FIELDS', message: 'restaurantName, itemName, totalPrice 필요' });
+    }
+
+    // 토스페이 결제 승인
+    let tossApprovedAt = new Date();
+    if (paymentMethod === 'toss') {
+      if (!paymentKey || !tossOrderId) {
+        return res.status(400).json({ code: 'MISSING_TOSS_INFO', message: 'paymentKey와 tossOrderId가 필요합니다.' });
+      }
+      try {
+        const tossRes = await axios.post(
+          'https://api.tosspayments.com/v1/payments/confirm',
+          { paymentKey, orderId: tossOrderId, amount: totalPrice },
+          { auth: { username: process.env.TOSS_SECRET_KEY, password: '' }, timeout: 15000 }
+        );
+        tossApprovedAt = new Date(tossRes.data.approvedAt);
+      } catch (tossErr) {
+        if (tossErr.response?.data) {
+          return res.status(400).json({ code: tossErr.response.data.code, message: tossErr.response.data.message });
+        }
+        throw tossErr;
+      }
     }
 
     // 식권 결제 시 유효성 검증
@@ -86,11 +108,11 @@ router.post('/quick', authenticate, async (req, res, next) => {
       await tx.payment.create({
         data: {
           orderId: newOrder.id,
-          provider: paymentMethod === 'kakaopay' ? 'kakaopay' : 'meal_ticket',
-          providerTxId: ticket ? ticket.ticketNumber : null,
+          provider: paymentMethod === 'toss' ? 'toss' : 'meal_ticket',
+          providerTxId: paymentMethod === 'toss' ? paymentKey : (ticket ? ticket.ticketNumber : null),
           status: 'PAID',
           amount: totalPrice,
-          paidAt: new Date(),
+          paidAt: paymentMethod === 'toss' ? tossApprovedAt : new Date(),
         },
       });
 

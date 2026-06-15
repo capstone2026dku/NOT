@@ -146,4 +146,14 @@ router.post('/:id/refund', async (req, res, next) => {
   }
 });
 
+// GET /payments/toss-success — WebView에서 성공 리다이렉트 인터셉트용
+router.get('/toss-success', (req, res) => {
+  res.send('<html><body><p>결제 완료</p></body></html>');
+});
+
+// GET /payments/toss-fail — WebView에서 실패 리다이렉트 인터셉트용
+router.get('/toss-fail', (req, res) => {
+  res.send('<html><body><p>결제 실패</p></body></html>');
+});
+
 module.exports = router;
